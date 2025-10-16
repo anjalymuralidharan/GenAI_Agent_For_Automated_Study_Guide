@@ -4,10 +4,7 @@ import streamlit as st
 from src.data_loader import load_pdf_files, split_documents
 from src.vectorstore import setup_vectorstore, load_vectorstore
 from src.rag_chain import create_rag_chain
-from src.memory_map import (
-    create_memory_map, display_memory_map, get_related_concepts,
-    extract_concepts_and_relations
-)
+from src.memory_map import create_memory_map, extract_concepts_and_relations
 from src.flash_card import FlashcardGenerator
 from langchain_ollama import OllamaLLM
 
@@ -21,47 +18,48 @@ st.set_page_config(
     layout="wide"
 )
 
-# Custom CSS to improve chat layout
+# Custom CSS for layout
 st.markdown("""
 <style>
-    /* Chat container styling */
-    .stChatFloatingInputContainer {
-        position: fixed !important;
-        bottom: 0 !important;
-        left: 50% !important;
-        transform: translateX(-50%) !important;
-        width: 800px !important;
-        max-width: calc(100% - 500px) !important;
-        padding: 20px !important;
-        z-index: 1000 !important;
-        background: linear-gradient(180deg, transparent 0%, rgba(255,255,255,0.9) 20%) !important;
+    /* Main container styles */
+ 
+    
+    /* Chat area styles */
+    .chat-container {
+        flex-grow: 1;
+        overflow-y: auto;
+        padding: 20px;
+        padding-top: 0px;
     }
     
-    .stChatInputContainer {
-        background-color: rgba(255, 255, 255, 0.95) !important;
-        border-radius: 15px !important;
-        padding: 15px !important;
-        box-shadow: 0 4px 12px rgba(0,0,0,0.1) !important;
-        backdrop-filter: blur(10px) !important;
-        border: 1px solid rgba(255,255,255,0.3) !important;
+    /* Custom scrollbar for chat area */
+    .chat-container::-webkit-scrollbar {
+        width: 6px;
+        height: 6px;
     }
     
-    /* Add padding to main content to prevent overlap with input */
-    .main > div {
-        padding-bottom: 120px !important;
-        margin-bottom: 0 !important;
+    .chat-container::-webkit-scrollbar-track {
+        background: #f1f1f1;
+        border-radius: 3px;
     }
     
-    /* Chat input styling */
+    .chat-container::-webkit-scrollbar-thumb {
+        background: #888;
+        border-radius: 3px;
+    }
+    
+    .chat-container::-webkit-scrollbar-thumb:hover {
+        background: #666;
+    }
+    
+    /* Input area styles */
     .stChatInput {
-        border-radius: 10px !important;
+        max-width: 800px;
+        margin: 0 auto;
     }
     
-    /* Message styling */
-    .stChatMessage {
-        padding: 15px;
-        margin: 10px 0;
-        border-radius: 10px;
+    .stChatFloatingInputContainer {
+        bottom: 20px !important;
     }
 </style>
 """, unsafe_allow_html=True)
@@ -89,15 +87,16 @@ with st.sidebar:
 if selected_page == "PDF Chat":
     st.title("💬 Chat with your PDFs")
 elif selected_page == "Flashcards":
-    st.title("🗂 Flashcards")
-    st.info("🚧 Flashcards feature coming soon! This will help you create and review flashcards from your PDF content.")
+    st.title("🎴 Flashcards")
+  
 elif selected_page == "Memory Map":
-    st.title("🗺 Memory Map")
-    st.info("🚧 Memory Map feature coming soon! This will help you visualize connections between concepts in your documents.")
-
+    st.title("📊 Memory Map")
+    
 # Initialize session state
 if 'messages' not in st.session_state:
     st.session_state.messages = []
+if 'chat_history' not in st.session_state:
+    st.session_state.chat_history = []
 if 'vectorstore' not in st.session_state:
     st.session_state.vectorstore = None
 if 'files_processed' not in st.session_state:
@@ -136,59 +135,81 @@ if uploaded_files and not st.session_state.files_processed:
 # Display appropriate content based on selection
 if selected_page == "PDF Chat":
     if st.session_state.files_processed:
-        # Create a two-row layout
-        chat_area = st.container()
-        input_area = st.container()
+        # Create main container with CSS class
+        st.markdown('<div class="main-container">', unsafe_allow_html=True)
         
-        # Reserve space for input at bottom
-        with input_area:
-            st.write("")  # Add some spacing
-            prompt = st.chat_input("Ask a question about your PDFs...", key="chat_input")
-        
-        # Display chat messages in the chat area
-        with chat_area:
-            # Add some padding at the top
-            st.write("")
+        # Create chat area container
+        main_container = st.container()
+        with main_container:
+            # Add chat area with CSS class
+            st.markdown('<div class="chat-container">', unsafe_allow_html=True)
             
-            # Create a scrollable container for messages
-            with st.container():
+            # Messages container
+            messages_container = st.container()
+            with messages_container:
                 # Display chat messages
                 for message in st.session_state.messages:
                     with st.chat_message(message["role"]):
                         st.markdown(message["content"])
+            
+            # Close chat container div
+            st.markdown('</div>', unsafe_allow_html=True)
+        
+        # Handle chat input and responses
+        prompt = st.chat_input("Ask a question about your PDFs...", key="chat_input")
+        
+        if prompt:
+            # Add user message to chat
+            st.session_state.messages.append({'role': 'user', 'content': prompt})
+            with st.chat_message("user"):
+                st.markdown(prompt)
 
-            if prompt:
-                # Add user message to chat
-                st.session_state.messages.append({'role': 'user', 'content': prompt})
-                with st.chat_message("user"):
-                    st.markdown(prompt)
+            # Create retriever and RAG chain
+            retriever = st.session_state.vectorstore.as_retriever(search_kwargs={"k": 4})
+            rag_chain = create_rag_chain(retriever)
 
-                # Create retriever and RAG chain
-                retriever = st.session_state.vectorstore.as_retriever(search_kwargs={"k": 4})  # Increased context
-                rag_chain = create_rag_chain(retriever)
+            # Format chat history for context
+            formatted_history = ""
+            for i in range(0, len(st.session_state.chat_history), 2):
+                if i + 1 < len(st.session_state.chat_history):
+                    formatted_history += f"\nHuman: {st.session_state.chat_history[i]}\nAssistant: {st.session_state.chat_history[i+1]}\n"
 
-                # Generate and stream response
-                with st.spinner("Thinking..."):
-                    with st.chat_message('assistant'):
-                        response_placeholder = st.empty()
-                        full_response = ""
-                        
-                        # Stream the response
-                        for piece in rag_chain.stream(prompt):
-                            full_response += piece
-                            response_placeholder.markdown(full_response + "▌")
-                        response_placeholder.markdown(full_response)
-                
-                # Add assistant response to chat history
-                st.session_state.messages.append({'role': 'assistant', 'content': full_response})
-                
-                # Scroll to bottom (this is handled automatically by Streamlit)
+            # Add current question to chat history
+            st.session_state.chat_history.append(prompt)
+
+            # Create enhanced prompt with chat history
+            enhanced_prompt = f"""Previous conversation:
+{formatted_history}
+
+Current question: {prompt}
+
+Please provide a response that takes into account the conversation history when relevant."""
+
+            # Generate and stream response
+            with st.spinner("Thinking..."):
+                with st.chat_message('assistant'):
+                    response_placeholder = st.empty()
+                    full_response = ""
+                    
+                    # Stream the response using enhanced prompt
+                    for piece in rag_chain.stream(enhanced_prompt):
+                        full_response += piece
+                        response_placeholder.markdown(full_response + "▌")
+                    response_placeholder.markdown(full_response)
+            
+            # Add assistant response to both message display and chat history
+            st.session_state.messages.append({'role': 'assistant', 'content': full_response})
+            st.session_state.chat_history.append(full_response)
+            
+            st.rerun()  # Refresh to update chat history
+        
+        # Close main container div
+        st.markdown('</div>', unsafe_allow_html=True)
     else:
-        st.info("� Please upload some PDF files in the sidebar to start chatting!")
+        st.info("📄 Please upload some PDF files in the sidebar to start chatting!")
 
 elif selected_page == "Flashcards":
     if st.session_state.files_processed:
-        st.title("🗂️ Flashcards")
         
         # Add controls in sidebar
         with st.sidebar:
@@ -200,7 +221,7 @@ elif selected_page == "Flashcards":
                 if st.button("🎲 Generate New Flashcards"):
                     with st.spinner("Generating flashcards from your documents..."):
                         # Initialize LLM
-                        llm = OllamaLLM(model="gemma3")
+                        llm = OllamaLLM(model="deepseek-r1")
                         
                         # Get all text from documents
                         retriever = st.session_state.vectorstore.as_retriever()
@@ -336,54 +357,21 @@ elif selected_page == "Memory Map":
         st.write("📚 Interactive Memory Map of Your Documents")
         
         # Add controls for visualization
-        col1, col2 = st.columns([3, 1])
-        with col2:
-            st.markdown("### 🎨 Visualization Options")
+        with st.spinner("Generating memory map..."):
+            # Get documents from vectorstore
+            retriever = st.session_state.vectorstore.as_retriever()
+            docs = retriever.get_relevant_documents("")  # Get all documents
             
-            min_connections = st.slider(
-                "Minimum Connections",
-                min_value=0,
-                max_value=10,
-                value=1,
-                help="Filter concepts by minimum number of connections"
-            )
-            
-            theme = st.selectbox(
-                "Color Theme",
-                options=["light", "dark"],
-                help="Choose the visualization theme"
-            )
-            
-            node_size = st.checkbox(
-                "Size nodes by connections",
-                value=True,
-                help="Make more connected nodes larger"
-            )
+            # Create mind map visualization
+            create_memory_map(docs, height=700)
             
             st.markdown("### 🎮 How to Use")
             st.markdown("""
-            - 👆 Click nodes to see concept descriptions
+            - 👆 Click nodes to expand/collapse
             - 🔍 Scroll to zoom in/out
-            - 🖐️ Drag background to pan
-            - ✨ Double-click to focus on a node
-            - ✨ Double-click to focus
-            - 🎯 Hold to select multiple
+            - 🖐️ Drag to pan
+            - 📍 Click concept titles to focus
             """)
-        
-        with col1:
-            with st.spinner("Generating memory map..."):
-                # Get documents from vectorstore
-                retriever = st.session_state.vectorstore.as_retriever()
-                docs = retriever.get_relevant_documents("")  # Get all documents
-                
-                # Create and display memory map with selected options
-                content = create_memory_map(
-                    docs,
-                    min_connections=min_connections,
-                    theme=theme,
-                    node_size=node_size
-                )
-                display_memory_map(content)
         
         # Add concept explorer
         st.markdown("### 🔍 Concept Explorer")
@@ -393,10 +381,8 @@ elif selected_page == "Memory Map":
         # Get all concepts for selection
         all_concepts = []
         with st.spinner("Loading concepts..."):
-            for doc in docs:
-                concepts, _ = extract_concepts_and_relations(doc.page_content)
-                all_concepts.extend(concepts)
-        all_concepts = sorted(list(set(all_concepts)))
+            concept_hierarchy = extract_concepts_and_relations(" ".join([doc.page_content for doc in docs]))
+            all_concepts = sorted(list(set(concept_hierarchy.keys())))
         
         # Concept selector
         selected_concept = st.selectbox(
@@ -407,12 +393,16 @@ elif selected_page == "Memory Map":
         )
         
         if selected_concept:
-            st.markdown(f"### Context for: {selected_concept}")
-            related_content = get_related_concepts(selected_concept, docs)
-            
-            for i, context in enumerate(related_content, 1):
-                with st.expander(f"Context {i}"):
-                    st.markdown(context)
+            st.markdown(f"### Related Concepts for: {selected_concept}")
+            if selected_concept in concept_hierarchy:
+                related = concept_hierarchy[selected_concept]
+                if related:
+                    for concept in sorted(set(related)):
+                        st.markdown(f"- {concept.title()}")
+                else:
+                    st.info("No directly related concepts found in the documents.")
+            else:
+                st.info("No related concepts found in the documents.")
     else:
         st.info("👈 Please upload some PDF files in the sidebar to create a memory map!")
 
@@ -421,6 +411,7 @@ st.sidebar.markdown("---")
 if st.session_state.files_processed or st.session_state.messages:
     def reset_all():
         st.session_state.messages = []
+        st.session_state.chat_history = []
         st.session_state.files_processed = False
         st.session_state.vectorstore = None
         st.rerun()

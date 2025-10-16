@@ -19,7 +19,7 @@ Question: {question}
 
 Detailed Answer (provide a thorough explanation with examples and clarification where needed):"""
 
-def create_rag_chain(retriever, prompt_template=DEFAULT_PROMPT_TEMPLATE, model_name="gemma3"):
+def create_rag_chain(retriever, prompt_template=DEFAULT_PROMPT_TEMPLATE, model_name="deepseek-r1"):
     """Create a RAG chain using the provided retriever and prompt template."""
     prompt = PromptTemplate(
         template=prompt_template,
@@ -36,7 +36,7 @@ def create_rag_chain(retriever, prompt_template=DEFAULT_PROMPT_TEMPLATE, model_n
 
     return rag_chain
 
-def create_qa_chain(retriever, prompt_template=DEFAULT_PROMPT_TEMPLATE, model_name="gemma3"):
+def create_qa_chain(retriever, prompt_template=DEFAULT_PROMPT_TEMPLATE, model_name="deepseek-r1"):
     """Create a RetrievalQA chain using the provided retriever and prompt template."""
     prompt = PromptTemplate(
         template=prompt_template,

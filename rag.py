@@ -62,7 +62,7 @@ if not os.path.exists(persist_directory):
 # )
 
 embeddings = OllamaEmbeddings(
-    model="gemma3",
+    model="deepseek-r1",
 )
 
 def format_docs(docs):
@@ -101,7 +101,7 @@ retriever = vectordb.as_retriever(search_kwargs={"k": 3})
 n_gpu_layers = 1
 n_batch = 512
 
-llm = OllamaLLM(model="gemma3",)
+llm = OllamaLLM(model="deepseek-r1",)
 
 ########## use when using RetrievalQA chain from llm's chain ##########
 qa = RetrievalQA.from_chain_type(llm=llm, chain_type='stuff',

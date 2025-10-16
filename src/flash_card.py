@@ -11,17 +11,70 @@ class FlashcardGenerator:
         Initialize with directories containing your Canva template images
         Templates should be PNG/JPG images
         """
-        self.question_templates = self._load_templates(question_templates_dir)
-        self.answer_templates = self._load_templates(answer_templates_dir)
+        # Get the absolute path of the current file's directory
+        current_dir = os.path.dirname(os.path.abspath(__file__))
+        
+        # Go up one level to the project root if we're in the src directory
+        if os.path.basename(current_dir) == "src":
+            project_root = os.path.dirname(current_dir)
+        else:
+            project_root = current_dir
+            
+        # Construct absolute paths for template directories
+        self.question_templates_dir = os.path.join(project_root, "src", "templates", "questions")
+        self.answer_templates_dir = os.path.join(project_root, "src", "templates", "answers")
+        
+        # Create directories if they don't exist
+        os.makedirs(self.question_templates_dir, exist_ok=True)
+        os.makedirs(self.answer_templates_dir, exist_ok=True)
+        
+        # Load templates using absolute paths
+        self.question_templates = self._load_templates(self.question_templates_dir)
+        self.answer_templates = self._load_templates(self.answer_templates_dir)
+        
+        # Log template loading results for debugging
+        print(f"Loading templates from: {self.question_templates_dir}")
+        print(f"Found {len(self.question_templates)} question templates")
+        print(f"Found {len(self.answer_templates)} answer templates")
+        
+        if not self.question_templates or not self.answer_templates:
+            print("Warning: No templates found in directories:")
+        
         self.margin = 50
         
     def _load_templates(self, directory):
         """Load all image templates from directory"""
         templates = []
-        if os.path.exists(directory):
-            for file in os.listdir(directory):
+        
+        # Check if directory exists
+        if not os.path.exists(directory):
+            print(f"Warning: Template directory not found: {directory}")
+            return templates
+            
+        try:
+            # List all files in directory
+            files = os.listdir(directory)
+            print(f"Found files in {directory}: {files}")  # Debug log
+            
+            # Filter and add valid image files
+            for file in files:
                 if file.lower().endswith(('.png', '.jpg', '.jpeg')):
-                    templates.append(os.path.join(directory, file))
+                    template_path = os.path.join(directory, file)
+                    # Verify the image can be opened
+                    try:
+                        with Image.open(template_path) as img:
+                            # Convert relative path to absolute if needed
+                            abs_path = os.path.abspath(template_path)
+                            templates.append(abs_path)
+                            print(f"Successfully loaded template: {abs_path}")
+                    except Exception as e:
+                        print(f"Error loading template {template_path}: {str(e)}")
+            
+            print(f"Loaded {len(templates)} templates from {directory}")
+            
+        except Exception as e:
+            print(f"Error accessing template directory {directory}: {str(e)}")
+        
         return templates
     
     def load_font(self, size=28):
@@ -116,7 +169,8 @@ class FlashcardGenerator:
 
             # Add subtle shadow for better readability
             draw.text((text_x + 2, current_y + 2), line, font=font, fill="#00000040")
-            # draw.text((text_x, current_y), line, font=font, fill=text_color)
+            # Add the main text
+            draw.text((text_x, current_y), line, font=font, fill=text_color)
 
             current_y += text_height + 15
 
@@ -145,14 +199,16 @@ class FlashcardGenerator:
 
         # If no templates, create simple colored cards
         if not question_template:
-            front = self._create_simple_card(question, "QUESTION", "#4A90E2", "#000000")
+            front = self._create_simple_card(question, "QUESTION", "#4A90E2", "#FFFFFF")
         else:
-            front = self.add_text_to_template(question_template, question, "#000000")
+            # Use white text for template-based cards for better visibility
+            front = self.add_text_to_template(question_template, question, "#FFFFFF")
 
         if not answer_template:
-            back = self._create_simple_card(answer, "ANSWER", "#27AE60", "#000000")
+            back = self._create_simple_card(answer, "ANSWER", "#27AE60", "#FFFFFF")
         else:
-            back = self.add_text_to_template(answer_template, answer, "#000000")
+            # Use white text for template-based cards for better visibility
+            back = self.add_text_to_template(answer_template, answer, "#FFFFFF")
 
         return front, back
 
@@ -227,20 +283,30 @@ def main():
 
     # Initialize the FlashcardGenerator and question-template map once
     if 'question_templates_map' not in st.session_state:
-        generator = FlashcardGenerator(
-            question_templates_dir="templates/questions",
-            answer_templates_dir="templates/answers"
-        )
-        st.session_state.question_templates_map = {}
-
-        for q in st.session_state.qa_dict.keys():
-            if generator.question_templates:
-                chosen_template = random.choice(generator.question_templates)
+        try:
+            generator = FlashcardGenerator()
+            
+            if not generator.question_templates:
+                st.warning("⚠️ No template images found. Please ensure template folders exist and contain images.")
             else:
-                chosen_template = None
-            st.session_state.question_templates_map[q] = chosen_template
-
-        st.session_state.generator = generator
+                st.success(f"✅ Found {len(generator.question_templates)} question templates and {len(generator.answer_templates)} answer templates.")
+            
+            st.session_state.question_templates_map = {}
+            
+            for q in st.session_state.qa_dict.keys():
+                if generator.question_templates:
+                    chosen_template = random.choice(generator.question_templates)
+                else:
+                    chosen_template = None
+                st.session_state.question_templates_map[q] = chosen_template
+            
+            st.session_state.generator = generator
+            
+        except Exception as e:
+            st.error(f"Error initializing flashcard generator: {str(e)}")
+            generator = FlashcardGenerator()  # Fallback to default paths
+            st.session_state.generator = generator
+            st.session_state.question_templates_map = {}
 
     questions = list(st.session_state.qa_dict.keys())
     if not questions:
