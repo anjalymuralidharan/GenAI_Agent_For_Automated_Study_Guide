@@ -1,142 +1,223 @@
-from typing import List, Dict
-import spacy
+from typing import List, Dict, Any
 import streamlit as st
 from streamlit_markmap import markmap
 from langchain_ollama import OllamaLLM
+from langchain_core.vectorstores import VectorStore
+from langchain_core.prompts import PromptTemplate
 
-# Initialize spaCy model
-def ensure_spacy_model():
+def generate_topic_hierarchy(text: str, llm: OllamaLLM) -> str:
+    """Generate a hierarchical topic structure using LLM."""
+    
+    # First, get the main topic and summary
+    main_topic_prompt = PromptTemplate.from_template("""
+    Analyze this text and identify the main topic and a brief summary.
+    Response should be in this exact format:
+    # Main Topic Name Here
+    - Brief summary of the main topic (max 100 chars)
+
+    Text to analyze:
+    {text}
+    """)
+
+    subtopics_prompt = PromptTemplate.from_template("""
+    Based on this text, generate a hierarchical outline of the key topics and subtopics.
+    Use exactly this format with proper indentation:
+
+    ## Key Topic 1
+    - Brief description
+    
+    ### Subtopic 1.1
+    - Key point 1
+    - Key point 2
+    
+    ### Subtopic 1.2
+    - Key point 1
+    - Key point 2
+    
+    ## Key Topic 2
+    - Brief description
+    
+    ### Subtopic 2.1
+    - Key point 1
+    - Key point 2
+
+    Important:
+    - Generate 3-5 key topics
+    - Each key topic should have 2-3 subtopics
+    - Keep descriptions short and clear
+    - Use bullet points for details
+    - No other formatting or text
+
+    Text to analyze:
+    {text}
+    """)
+
     try:
-        return spacy.load("en_core_web_sm")
-    except OSError:
-        import sys
-        import subprocess
+        # Get main topic
+        main_topic_response = llm.invoke(main_topic_prompt.format(text=text[:3000]))  # Use first part for main topic
         
-        st.info("📥 Downloading required language model. This may take a moment...")
+        # Get subtopics structure
+        subtopics_response = llm.invoke(subtopics_prompt.format(text=text))
         
-        # Use the Python executable from the current environment
-        python_exe = sys.executable
-        subprocess.run([python_exe, "-m", "pip", "install", "spacy"])
-        subprocess.run([python_exe, "-m", "spacy", "download", "en_core_web_sm"])
+        # Combine and clean up the responses
+        full_content = main_topic_response + "\n\n" + subtopics_response
         
-        return spacy.load("en_core_web_sm")
-
-# Load the model
-nlp = ensure_spacy_model()
-
-def extract_concepts_and_relations(text: str) -> Dict[str, List[str]]:
-    """Extract key concepts and their relationships from text."""
-    doc = nlp(text)
-    
-    # Create a hierarchical structure
-    concept_hierarchy = {}
-    
-    # Process each sentence
-    for sent in doc.sents:
-        # Get main subject of the sentence (usually the first noun chunk)
-        subjects = [chunk for chunk in sent.noun_chunks]
-        if subjects:
-            main_subject = subjects[0].text.strip().lower()
-            # Get related concepts from the same sentence
-            related = [chunk.text.strip().lower() for chunk in subjects[1:]]
+        # Clean up the response
+        cleaned_content = (
+            full_content.strip('`')
+            .replace('```markdown', '')
+            .replace('```', '')
+            .strip()
+        )
+        
+        # Verify structure
+        lines = cleaned_content.split('\n')
+        if not any(line.startswith('# ') for line in lines):
+            raise ValueError("Missing main topic heading")
+        if not any(line.startswith('## ') for line in lines):
+            raise ValueError("Missing subtopics")
             
-            # Add to hierarchy
-            if main_subject not in concept_hierarchy:
-                concept_hierarchy[main_subject] = []
-            concept_hierarchy[main_subject].extend(related)
+        return cleaned_content
+            
+    except Exception as e:
+        st.error(f"Error generating topic hierarchy: {str(e)}")
+        return None
+
+def format_markmap(content: str) -> str:
+    """Format the markdown content for markmap visualization."""
     
-    return concept_hierarchy
+    # Define markmap configuration
+    header = """---
+markmap:
+  colorFreezeLevel: 1
+  maxWidth: 500
+  initialExpandLevel: 2
+  zoom: true
+  pan: true
+  color:
+    - "#2196F3"  # Main topic (blue)
+    - "#4CAF50"  # Key topics (green)
+    - "#FF9800"  # Subtopics (orange)
+  style:
+    nodeText:
+      padding: 4px
+      fontSize: 14px
+      fontWeight: normal
+---
 
-def get_concept_description(llm: OllamaLLM, concept: str, context: str) -> str:
-    """Use LLM to generate a concise bullet-point description for a concept."""
-    prompt = f"""Analyze the concept "{concept}" and provide exactly 2-3 key points in this format:
-
-    • [First key point - max 50 chars]
-    • [Second key point - max 50 chars]
-    • [Optional third point - max 50 chars]
-
-    Context: {context}
-
-    STRICT REQUIREMENTS:
-    - Provide ONLY 2-3 bullet points, no more
-    - Each point must be under 50 characters
-    - Use clear, memorable language
-    - Focus on the most important aspects
-    - Start each point with an action verb
-    - NO introduction or additional text
-    """
-    
+"""
     try:
-        result = llm.invoke(prompt)
-        # Clean and format the response
-        points = [line.strip() for line in result.split('\n') if line.strip().startswith('•')]
-        points = points[:3]  # Ensure max 3 points
-        formatted_points = []
-        for point in points:
-            point = point.strip('• ').strip()
-            if len(point) > 50:  # Truncate if too long
-                point = point[:47] + "..."
-            formatted_points.append(f"• {point}")
-        return "\n".join(formatted_points) if formatted_points else f"• Key point about {concept}"
-    except:
-        return f"• Key point about {concept}"
+        # Clean up the content
+        lines = content.split('\n')
+        cleaned_lines = []
+        
+        for line in lines:
+            line = line.strip()
+            if not line:
+                continue
+                
+            # Ensure proper spacing for list items
+            if line.startswith('- '):
+                # If this is a bullet point, ensure it's properly indented based on previous line
+                prev_line = cleaned_lines[-1] if cleaned_lines else ""
+                if prev_line.startswith('#'):
+                    cleaned_lines.append(line)
+                else:
+                    cleaned_lines.append("  " + line)  # Add indentation for better hierarchy
+            else:
+                cleaned_lines.append(line)
+        
+        # Join lines with proper spacing
+        cleaned_content = '\n'.join(cleaned_lines)
+        
+        return header + cleaned_content
+        
+    except Exception as e:
+        st.error(f"Error formatting markmap: {str(e)}")
+        return content  # Return original content if formatting fails
 
-def create_markmap_content(documents: List[dict], min_concepts: int = 5) -> str:
-    """
-    Create a markmap-compatible markdown structure from document concepts.
-    """
-    # Combine all document contents
-    all_text = " ".join([doc.page_content for doc in documents])
-    
-    # Extract concepts and relations
-    concept_hierarchy = extract_concepts_and_relations(all_text)
-    
-    # Initialize LLM
-    llm = OllamaLLM(model="deepseek-r1")
-    
-    # Create markmap markdown content
-    markdown_content = [
-        "---",
-        "markmap:",
-        "  colorFreezeLevel: 2",
-        "---",
-        "",
-        "# Document Concept Map",
-        ""
-    ]
-    
-    # Process main concepts
-    for main_concept, related_concepts in concept_hierarchy.items():
-        # Get concept description
-        description = get_concept_description(llm, main_concept, all_text)
-        
-        # Add main concept with description
-        markdown_content.extend([
-            f"## {main_concept.title()}",
-            f"- {description}"
-        ])
-        
-        # Add related concepts
-        if related_concepts:
-            markdown_content.append("### Related Concepts")
-            for related in set(related_concepts):
-                rel_description = get_concept_description(llm, related, all_text)
-                markdown_content.append(f"- {related.title()}: {rel_description}")
-        
-        markdown_content.append("")
-    
-    return "\n".join(markdown_content)
-
-def create_memory_map(documents: List[dict], height: int = 600) -> None:
+def create_memory_map(documents: List[dict], vectorstore: VectorStore = None, height: int = 600) -> None:
     """
     Create and display an interactive mind map visualization using markmap.
     
     Args:
         documents: List of document chunks
+        vectorstore: Vector store containing the document embeddings (optional)
         height: Height of the visualization in pixels
     """
-    # Generate markmap content
-    markmap_data = create_markmap_content(documents)
-    
-    # Display the mind map
-    markmap(markmap_data, height=height)
+    try:
+        with st.spinner("Generating mind map from documents..."):
+            # Initialize progress tracking
+            progress = st.progress(0)
+            status = st.empty()
+            
+            # Combine document contents with proper chunking
+            text_chunks = []
+            total_length = 0
+            max_chunk_size = 4000  # Maximum size for LLM processing
+            
+            for doc in documents:
+                content = doc.page_content.strip()
+                if total_length + len(content) < max_chunk_size:
+                    text_chunks.append(content)
+                    total_length += len(content)
+            
+            all_text = " ".join(text_chunks)
+            progress.progress(10)
+            
+            # Initialize LLM with specific parameters
+            status.text("Initializing language model...")
+            llm = OllamaLLM(
+                model="deepseek-r1",
+                temperature=0.3,  # Lower temperature for more focused output
+                max_tokens=2000   # Ensure enough tokens for full response
+            )
+            progress.progress(20)
+            
+            # Generate markdown content
+            status.text("Analyzing document content...")
+            markdown_content = generate_topic_hierarchy(all_text, llm)
+            progress.progress(60)
+            
+            if markdown_content:
+                # Format for markmap
+                status.text("Creating visualization...")
+                markmap_data = format_markmap(markdown_content)
+                progress.progress(90)
+                
+                # Create container for mind map
+                map_container = st.container()
+                with map_container:
+                    # Display the mind map with error handling
+                    try:
+                        markmap(markmap_data, height=height)
+                        progress.progress(100)
+                        status.empty()
+                        
+                        # Display usage instructions
+                        st.success("✅ Mind map generated successfully!")
+                        st.markdown("""
+                        ### 🎮 How to Use the Mind Map
+                        - 👆 Click topics to expand/collapse
+                        - 🔍 Use mouse wheel to zoom in/out
+                        - 🖐️ Drag to pan around
+                        - 📍 Double-click to focus on a topic
+                        
+                        ### 📝 Mind Map Structure
+                        - Main topic at the center
+                        - Key topics as primary branches
+                        - Subtopics and details as secondary branches
+                        - Click any node to explore related concepts
+                        """)
+                        
+                    except Exception as viz_error:
+                        st.error(f"Error displaying mind map: {str(viz_error)}")
+                        st.code(markmap_data, language="markdown")
+                        
+            else:
+                st.error("❌ Could not generate mind map. Please try with a smaller document or different content.")
+                st.info("Try uploading a smaller document or using the regenerate button.")
+                
+    except Exception as e:
+        st.error(f"❌ Error generating mind map: {str(e)}")
+        st.info("💡 Try reducing the document size or complexity if the error persists.")

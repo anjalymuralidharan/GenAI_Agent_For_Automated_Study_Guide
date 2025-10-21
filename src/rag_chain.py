@@ -4,20 +4,27 @@ from langchain_core.prompts import PromptTemplate
 from langchain_core.runnables import RunnablePassthrough
 from langchain_core.output_parsers import StrOutputParser
 
-DEFAULT_PROMPT_TEMPLATE = """Based on the following context, provide a comprehensive and detailed answer to the question. Your response should:
+DEFAULT_PROMPT_TEMPLATE = """
+You are a highly knowledgeable assistant designed to answer questions based on extracted content from PDF documents. Your goal is to provide accurate, detailed, and easy-to-understand answers using only the provided context.
 
-1. Be thorough and informative while remaining relevant
-2. Include specific examples or quotes from the context when applicable
-3. Break down complex concepts into clear explanations
-4. Use bullet points or numbered lists for multiple points
-5. Provide explanations at an appropriate level of detail based on the question's complexity
+Your response must:
+1. Be thorough and relevant to the provided context
+2. Use direct quotes or references from the context when appropriate
+3. Clarify complex or technical terms in simple language when needed
+4. Organize your response using bullet points, numbered lists, or clear headings if multiple ideas are involved
+5. Avoid assuming facts that are not in the context—even if they seem obvious
+6. Maintain a formal and informative tone suitable for academic, business, or technical users
+7. Correctly interpret tables, diagrams, or OCR text when present in the context
+8. Ignore unrelated or noisy data often found in PDFs (e.g. headers, footers, page numbers)
 
 Context:
 {context}
 
-Question: {question}
+Question:
+{question}
 
-Detailed Answer (provide a thorough explanation with examples and clarification where needed):"""
+Detailed Answer (provide a thorough explanation using only the information from the context):
+"""
 
 def create_rag_chain(retriever, prompt_template=DEFAULT_PROMPT_TEMPLATE, model_name="deepseek-r1"):
     """Create a RAG chain using the provided retriever and prompt template."""

@@ -4,13 +4,14 @@ import streamlit as st
 from src.data_loader import load_pdf_files, split_documents
 from src.vectorstore import setup_vectorstore, load_vectorstore
 from src.rag_chain import create_rag_chain
-from src.memory_map import create_memory_map, extract_concepts_and_relations
+from src.memory_map import create_memory_map
 from src.flash_card import FlashcardGenerator
 from langchain_ollama import OllamaLLM
+from langchain.chains import RetrievalQA
 
 # Set environment variable to disable telemetry
 os.environ["ANONYMIZED_TELEMETRY"] = "False"
-
+llm = OllamaLLM(model="deepseek-r1",)
 # Configure the Streamlit page
 st.set_page_config(
     page_title="PDF Learning Assistant",
@@ -229,26 +230,43 @@ elif selected_page == "Flashcards":
                         all_text = " ".join([doc.page_content for doc in docs])
                         
                         # Generate questions prompt
-                        gen_questions_prompt = f"""Generate {num_cards} high-quality flashcard questions and answers from the given text. Follow these guidelines:
+                        gen_questions_prompt = f"""
+                            You are an AI assistant that creates high-quality flashcard-style question-answer pairs from academic or technical texts.
 
-                        1. Question Types (mix evenly):
-                           - Definitions: "What is X?"
-                           - Concepts: "How does X work?"
-                           - Applications: "Why is X important?"
-                           - Relationships: "How are X and Y related?"
-                        
-                        2. Answer Guidelines:
-                           - Clear and concise (2-3 sentences)
-                           - Focus on key information
-                           - Include specific examples when relevant
-                        
-                        3. Format each QA pair exactly like this, one per line:
-                        {{"question": "What is X?", "answer": "X is Y and does Z. It is important because W."}}
+                            Generate exactly {num_cards} diverse and informative flashcard Q&A pairs from the provided text.
 
-                        Text to analyze: {all_text}
+                            ### Guidelines:
 
-                        Generate exactly {num_cards} question-answer pairs, one per line:"""
-                        
+                            1. **Question Types** (mix them evenly):
+                            - **Definition**: "What is X?"
+                            - **Conceptual**: "How does X work?" or "Explain the concept of X"
+                            - **Application**: "Why is X important?" or "Where is X used?"
+                            - **Relationship**: "How are X and Y related?"
+
+                            2. **Answer Requirements**:
+                            - Clear and concise (ideally 1–3 sentences)
+                            - Use simple, understandable language while preserving meaning
+                            - Focus on the most essential or test-worthy information
+                            - Use examples from the text when relevant
+
+                            3. **Formatting** (strict):
+                            - Each pair must be JSON-like, exactly like this:
+                                {{"question": "What is X?", "answer": "X is Y and does Z. It is important because W."}}
+
+                            ### Important:
+                            - Use only information available in the text.
+                            - Avoid repeating the same topic or overlapping content.
+                            - Skip irrelevant headers, page numbers, or footnotes often found in PDFs.
+
+                            ---
+
+                            Text to analyze:
+                            {all_text}
+
+                            ---
+
+                            Generate exactly {num_cards} question-answer pairs. Each on its own line in the specified JSON format:
+                            """
                         # Get response and parse QA pairs
                         response = llm.invoke(gen_questions_prompt)
                         
@@ -354,55 +372,46 @@ elif selected_page == "Flashcards":
 
 elif selected_page == "Memory Map":
     if st.session_state.files_processed:
-        st.write("📚 Interactive Memory Map of Your Documents")
         
-        # Add controls for visualization
-        with st.spinner("Generating memory map..."):
-            # Get documents from vectorstore
-            retriever = st.session_state.vectorstore.as_retriever()
-            docs = retriever.get_relevant_documents("")  # Get all documents
+        # Get documents from vectorstore
+        retriever = st.session_state.vectorstore.as_retriever(search_kwargs={"k": 10})
+        docs = retriever.get_relevant_documents("")  # Get all documents
+        # Initialize session state for memory map settings if not exists
+        if 'mind_map_settings' not in st.session_state:
+            st.session_state.mind_map_settings = {
+                'height': 700,
+                'refresh_map': False
+            }
+        
+        # Add settings in sidebar
+        with st.sidebar:
+            st.markdown("### �️ Mind Map Settings")
+            height = st.slider(
+                "Visualization Height", 
+                min_value=400, 
+                max_value=1000, 
+                value=st.session_state.mind_map_settings['height'],
+                step=50
+            )
+            if height != st.session_state.mind_map_settings['height']:
+                st.session_state.mind_map_settings['height'] = height
+                st.session_state.mind_map_settings['refresh_map'] = True
             
+            if st.button("🔄 Regenerate Mind Map"):
+                st.session_state.mind_map_settings['refresh_map'] = True
+        
+        # Generate mind map with progress tracking
+        try:
             # Create mind map visualization
-            create_memory_map(docs, height=700)
+            create_memory_map(docs, height=st.session_state.mind_map_settings['height'])
             
-            st.markdown("### 🎮 How to Use")
-            st.markdown("""
-            - 👆 Click nodes to expand/collapse
-            - 🔍 Scroll to zoom in/out
-            - 🖐️ Drag to pan
-            - 📍 Click concept titles to focus
-            """)
-        
-        # Add concept explorer
-        st.markdown("### 🔍 Concept Explorer")
-        if 'selected_concept' not in st.session_state:
-            st.session_state.selected_concept = None
-            
-        # Get all concepts for selection
-        all_concepts = []
-        with st.spinner("Loading concepts..."):
-            concept_hierarchy = extract_concepts_and_relations(" ".join([doc.page_content for doc in docs]))
-            all_concepts = sorted(list(set(concept_hierarchy.keys())))
-        
-        # Concept selector
-        selected_concept = st.selectbox(
-            "Select a concept to explore",
-            options=all_concepts,
-            index=None,
-            placeholder="Choose a concept..."
-        )
-        
-        if selected_concept:
-            st.markdown(f"### Related Concepts for: {selected_concept}")
-            if selected_concept in concept_hierarchy:
-                related = concept_hierarchy[selected_concept]
-                if related:
-                    for concept in sorted(set(related)):
-                        st.markdown(f"- {concept.title()}")
-                else:
-                    st.info("No directly related concepts found in the documents.")
-            else:
-                st.info("No related concepts found in the documents.")
+            # Reset refresh flag
+            if st.session_state.mind_map_settings['refresh_map']:
+                st.session_state.mind_map_settings['refresh_map'] = False
+                
+        except Exception as e:
+            st.error(f"❌ Error generating mind map: {str(e)}")
+            st.info("💡 Try reducing the document size or refreshing the map")
     else:
         st.info("👈 Please upload some PDF files in the sidebar to create a memory map!")
 
