@@ -1,81 +1,159 @@
-# About
+# Automated Study Guide Generator with RAG and LLMs
 
-This project runs a local llm agent based RAG model on langchain using [LCEL](https://python.langchain.com/docs/expression_language/get_started)(LangChain Expression Language) as well as older LLM chains(RetrievalQA), see `rag.py`. <br> We are using LECL in rag.py for inference as it has a smooth output streaming generator output which is consumed by streamlit using 'write_stream' method.
+## Overview
+This project implements an advanced Retrieval-Augmented Generation (RAG) system that creates interactive study guides using Ollama and the DeepSeek-r1 model. The system combines modern LLM technologies with efficient document processing to provide a comprehensive learning experience, including flashcards and mind maps.
 
-The model uses persistent ChromaDB for vector store, which takes all the pdf files in `data_source` directory (one pdf about titanic for demo).
-
-The UI is built on streamlit, where the output of RAG model is streamed token on the streamlit app in a chat format, see `st_app.py`.
-
-![image info](./assets/snap1.png)
-
-__Note:__ The output can be streamed on terminal as well using calbacks. 
-### <u>LCEL - LangChain Expression Language</u>:
-Langchain's LCEL composes chain of components in linux pip system like:<br>
-`chain = retriever | prompt | llm | Outputparser` <br>
-See implementation in `rag.py`
-
-![image info](./assets/lcel_pipe_flow.png)
+### Key Features
+- **RAG-based Document Processing**: Utilizes LangChain's LCEL (LangChain Expression Language) for efficient document retrieval and generation
+- **Persistent Vector Storage**: Implements ChromaDB for reliable document vectorization and retrieval
+- **Interactive UI**: Built with Streamlit for a user-friendly learning interface
+- **Local LLM Integration**: Powered by Ollama with DeepSeek-r1 model for high-quality responses
+- **Real-time Response Streaming**: Features token-by-token output streaming for immediate feedback
+- **Dynamic Flashcards**: Generate and review AI-created flashcards for effective learning
+- **Interactive Mind Maps**: Visualize concepts and their relationships through automated mind map generation
 
 
-For more: [Pinecone LCEL Article](https://www.pinecone.io/learn/series/langchain/langchain-expression-language/)
+## Technical Architecture
 
-# Enviornment Setup 
+### RAG Implementation
+The project implements two approaches for RAG:
+1. **LCEL Pipeline** (Modern Approach):
+   ```python
+   chain = retriever | prompt | llm | OutputParser
+   ```
+   - Provides smooth output streaming
+   - Integrates seamlessly with Streamlit's write_stream method
+   - Enhanced composability and maintainability
 
-1. Clone the repo using git:
-    ```shell
-    git clone https://github.com/rauni-iitr/langchain_chromaDB_opensourceLLM_streamlit.git
-    ```
+2. **Traditional LangChain Chain** (Legacy Support):
+   - Implements RetrievalQA for backwards compatibility
+   - Supports terminal-based output streaming via callbacks
 
-2. Create a virtual enviornment, with 'venv' or with 'conda' and activate.
-    ```shell
-    python3 -m venv .venv
-    source .venv/bin/activate
-    ```
+![LCEL Pipeline Flow](./assets/lcel_pipe_flow.png)
 
-3. Now this rag application is built using few dependencies:
-    - pypdf -- for reading pdf documents
-    - chromadb -- vectorDB for creating a vector store
-    - transformers -- dependency for sentence-transfors, atleast in this repository
-    - sentence-transformers -- for embedding models to convert pdf documnts into vectors
-    - streamlit -- to make UI for the LLM PDF's Q&A
-    - llama-cpp_python -- to load gguf files for CPU inference of LLMs
-    - langchain -- framework to orchestrate VectorDB and LLM agent
+### Advanced Learning Features
 
-    You can install all of these with pip;
-    ```shell
-    pip install pypdf chromadb langchain transformers sentence-transformers streamlit
-    ```
-4. Installing llama-cpp-python:
-    * This project uses uses [LlamaCpp-Python](https://github.com/abetlen/llama-cpp-python) for GGUF(llama-cpp-python >=0.1.83) models loading and inference, if you are using GGML models you need (llama-cpp-python <=0.1.76).
+#### Flashcard System
+- Automated generation of question-answer pairs from documents
+- Spaced repetition support for optimal learning
+- Interactive review interface with performance tracking
+- Customizable difficulty levels and topics
 
-    If you are going to use BLAS or Metal with [llama-cpp](https://github.com/abetlen/llama-cpp-python#installation-with-openblas--cublas--clblast--metal) for faster inference then appropriate flags need to be setup:
+#### Mind Map Generation
+- Automatic concept extraction and relationship mapping
+- Interactive visualization using vis.js network graphs
+- Hierarchical knowledge representation
+- Dynamic node expansion and exploration
 
-    For Nvidia's GPU infernece, use 'cuBLAS', run below commands in your terminal:
-    ```shell
-    CMAKE_ARGS="-DLLAMA_CUBLAS=on" FORCE_CMAKE=1 pip install llama-cpp-python==0.1.83 --no-cache-dir
-    ```
+### Vector Store Implementation
+- Uses ChromaDB for persistent vector storage
+- Automatically processes PDF files from the `data_source` directory
+- Maintains efficient retrieval for context-aware responses
 
-    For Apple's Metal(M1/M2) based infernece, use 'METAL', run:
-    ```shell
-    CMAKE_ARGS="-DLLAMA_METAL=on"  FORCE_CMAKE=1 pip install llama-cpp-python==0.1.83 --no-cache-dir
-    ```
-    For more info, for setting right flags on any device where your app is running, see [here](https://codesandbox.io/p/github/imotai/llama-cpp-python/main).
 
-5. Downloading GGUF/GGML models, need to be downloaded and path given to code in 'rag.py':
-    * To run the model with open source LLMs saved locally, download [model](https://huggingface.co/TheBloke/Mistral-7B-v0.1-GGUF/tree/main).<br>
+## Project Structure
+```
+├── data_source/         # Sample PDF documents
+├── lib/                 # External libraries and utilities
+├── src/
+│   ├── data_loader.py  # Document processing utilities
+│   ├── flash_card.py   # Flashcard generation logic
+│   ├── memory_map.py   # Memory management
+│   ├── rag_chain.py    # RAG chain implementation
+│   ├── vectorstore.py  # Vector store operations
+│   └── templates/      # Template files for Q&A
+├── rag.py              # Main RAG implementation
+└── st_app.py          # Streamlit application
+```
 
-    * You can download any gguf file here based on your RAM specifications, you can find 2, 3, 4 and 8 bit quantized models for [Mistral-7B-v0.1](https://huggingface.co/mistralai/Mistral-7B-v0.1) developed by MistralAI here.<br>
+## Installation Guide
 
-        **Note:** You can download any other model like llama-2, other versions of mistral or any other model with gguf and ggml format to be run through llama-cpp.
-        If you have access to GPU, you can use GPTQ models(for better llm performance) as well which can be loaded with other libraries as well like transformers.
+### 1. Repository Setup
+```shell
+git clone https://github.com/anjalymuralidharan/GenAI_Agent_For_Automated_Study_Guide
+cd GenAI_Agent_For_Automated_Study_Guide
+```
 
-### Your setup to run the llm app is ready.
+### 2. Virtual Environment Setup
+```shell
+# Using venv
+python3 -m venv .venv
+source .venv/bin/activate  # For Unix/MacOS
+# OR
+.venv\Scripts\activate     # For Windows
 
-To run the model:
+# Using conda
+conda create -n study_guide_env python=3.9
+conda activate study_guide_env
+```
 
+### 3. Core Dependencies
+Install the primary project dependencies:
+```shell
+pip install -r requirements.txt
+```
+
+### 4. Ollama Setup
+
+1. **Install Ollama**:
+   - Visit [Ollama's official website](https://ollama.ai) to download and install Ollama for your operating system
+   - Follow the installation instructions for your platform
+
+2. **Setup DeepSeek-r1 Model**:
+   ```shell
+   ollama pull deepseek-r1:latest
+   ```
+
+   This will download and set up the DeepSeek-r1 model in Ollama.
+
+
+## Usage
+
+### Starting the Application
 ```shell
 streamlit run st_app.py
 ```
+
+### Using the Interface
+
+1. **Document Processing**:
+   - Upload PDF documents to the `data_source` directory
+   - The system will automatically process and vectorize the content
+
+2. **Interactive Learning**:
+   - Launch the application using Streamlit
+   - Use the chat interface for general questions
+   - Generate flashcards from your documents
+   - Create and explore mind maps of concepts
+
+3. **Flashcard Features**:
+   - Auto-generate flashcards from uploaded content
+   - Review cards with spaced repetition
+   - Track learning progress
+   - Filter cards by topic or difficulty
+
+4. **Mind Map Usage**:
+   - View automatically generated concept maps
+   - Click nodes to expand relationships
+   - Explore connected concepts
+   - Export mind maps for external use
+
+## Performance Optimization
+
+### System Requirements
+- Ollama runs locally on your machine
+- DeepSeek-r1 model requires approximately 8GB RAM
+- SSD recommended for faster vector store operations
+
+### Best Practices
+- Keep PDF documents well-structured for better processing
+- Use clear, specific questions for better responses
+- Regularly review and update flashcards
+- Explore mind map connections for comprehensive understanding
+
+## Contributing
+Contributions are welcome! Please feel free to submit pull requests, create issues, or suggest improvements.
+
 
 
     
