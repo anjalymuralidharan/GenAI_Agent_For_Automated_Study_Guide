@@ -1,5 +1,8 @@
 # Automated Study Guide Generator with RAG and LLMs
 
+https://github.com/user-attachments/assets/911bbca4-7ad2-4662-93bf-6d4d611d714c
+
+
 ## Overview
 This project implements an advanced Retrieval-Augmented Generation (RAG) system that creates interactive study guides using Ollama and the DeepSeek-r1 model. The system combines modern LLM technologies with efficient document processing to provide a comprehensive learning experience, including flashcards and mind maps.
 
