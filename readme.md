@@ -32,7 +32,6 @@ The project implements two approaches for RAG:
    - Implements RetrievalQA for backwards compatibility
    - Supports terminal-based output streaming via callbacks
 
-![LCEL Pipeline Flow](./assets/lcel_pipe_flow.png)
 
 ### Advanced Learning Features
 
